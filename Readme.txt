@@ -45,8 +45,14 @@ This pipeline utilises XSTREAM, a tandem repeat detection software developed by 
 Newman, A. M. and Cooper, J. B. (2007). XSTREAM: a practical algorithm for identification and architecture modeling of tandem repeats in protein sequences. BMC bioinformatics, 8, p.382.
 https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-8-382
 
-This pipeline utilises metapredict.
- 
+This pipeline utilises metapredict, an intrinsic disorder prediction software developed by Ryan Emenecker, Daniel Griffith and Alex Holehouse, please be sure to also credit their work:
+
+Emenecker, R. J., Griffith, D. and Holehouse, A. S. (2022). Metapredict V2: An update to metapredict, a fast, accurate, and easy-to-use predictor of consensus disorder and structure. bioRxiv, p.2022.06.06.494887.
+https://www.biorxiv.org/content/10.1101/2022.06.06.494887v1
+
+Emenecker, R. J., Griffith, D. and Holehouse, A. S. (2021). Metapredict: a fast, accurate, and easy-to-use predictor of consensus disorder and structure. Biophysical journal, 120 (20), pp.4312–4319.
+https://www.cell.com/biophysj/fulltext/S0006-3495(21)00725-6
+
 Note:
 
 The record id (the FASTA name) must not exceed 50 characters, as this will interfere with sequence filtering after XSTREAM repeat detection.
