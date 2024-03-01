@@ -219,7 +219,7 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
         for seqs in protfasta_seqs:
             PlotID=re.sub("\||\*|\?|\.|\/|\"|\<|\>|\:","_",seqs[0])
             PlotID=PlotID.split(' ')[0]
-            meta.graph_disorder(seqs[1], pLDDT_scores=True, DPI=300, output_file=directory+'/%s_metapredict_plot.png' %PlotID, title = "%s" %seqs[0])
+            meta.graph_disorder(seqs[1], pLDDT_scores=True, DPI=300, output_file=directory+'/%s_metapredict_plot.pdf' %PlotID, title = "%s" %seqs[0])
             i += 1      
             print("Plotted " +str(i)+" sequences.")
 
