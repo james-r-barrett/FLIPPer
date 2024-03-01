@@ -129,7 +129,7 @@ for file in onlyfiles:
         ## find html file which is output from XSTREAM, extract sequences, then run metapredict module against
         
         print(lineenter)
-        print("Extracting filtered candidates from XSTREAM.")   
+          
 
         for f in os.listdir(PATH):
             if f.endswith("_2.html"):
@@ -142,14 +142,17 @@ for file in onlyfiles:
                     os.remove(x)
                 ## run XSTREAM again on filtered sequences
                 ## not ideal in terms of speed, but cleans up the outputs
+                print("Extracting filtered candidates from XSTREAM.") 
+
                 subprocess.call(['java', '-Xmx1000m', '-Xms1000m', '-jar', 'scripts/xstream.jar', 'Temp_xstream_filtered.fasta', "-e"+str(Copy), "-i"+str(Word), "-I" +str(Consensus), "-g" +str(Gaps), "-m" +str(minPeriod), "-x" +str(maxPeriod), "-a"+str(file), "-t1", "-T" +str(Coverage)], stdout=subprocess.DEVNULL)   
 
                 print("Done!")
+                print(lineenter)
 
                 ## run metapredict module against filtered sequences
                 metapredict_htp('Temp_xstream_filtered.fasta',directory, metapredict_plot, metapredict_filter_value)
 
-                print("Tidying up...")  
+                print("\nTidying up...")  
 
                 for x in glob.glob("XSTREAM*"):
                     os.remove(x)
@@ -191,20 +194,3 @@ for file in onlyfiles:
         print(lineenter) 
 
 print("ALL FINISHED!")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
