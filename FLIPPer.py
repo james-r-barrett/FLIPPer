@@ -45,7 +45,7 @@ lineenter = "\n" + "=========================================================" +
 ## Check if output folder for files exists
 ## If it does, remove from files for analysis then continue
 for file in onlyfiles:
-    if os.path.exists("{}_outputs".format(file)):
+    if os.path.exists("{}_FLIPPer_outputs".format(file)):
         onlyfiles.remove(file)
         print(lineenter)
         print("Output folder for "+str(file)+" already exists, please rename or remove - skipping.")
@@ -84,7 +84,7 @@ if xstream_custom == "y":
 
 ## Do they want to filter sequences after XSTREAM to only include sequences with repeats that contain aromatic/electrostatic residues?
 print(lineenter)
-xstream_positive = (input("Would you like to alter the filtering paramaters for sequences after XSTREAM? (Default = 1 aromatic, 2 electrostatic) (y/n): "))
+xstream_positive = (input("Would you like to use custom filtering paramaters for sequences after XSTREAM? (Default = 1 aromatic, 2 electrostatic) (y/n): "))
 ## If yes to above, specify number of electrosatic and aromatic resiudes
 if xstream_positive == "y":
     print("\n" + "Please set post-XSTREAM filtering variables..." + "\n")
@@ -97,7 +97,7 @@ full_output = (input("Would you like to keep sequence analysis of all input sequ
 
 ## Do they want to filter after metapredict analysis?
 print(lineenter)
-metapredict_filter = (input("Would you like to alter the disorder filter after metapredict analysis? (y/n): "))
+metapredict_filter = (input("Would you like to use a custom disorder filter after metapredict analysis? (y/n): "))
 if metapredict_filter == 'y':
         metapredict_filter_value = float(input("Threshold for IUPred filtering? (Default = 50): "))
 else:
@@ -105,7 +105,7 @@ else:
 
 ## Do they want to output metapredict plots for each of the XSTREAM sequences?
 print(lineenter)
-metapredict_plot = (input("Would you like to plot metapredict profiles for candidate sequences? - y recommended (y/n): "))
+metapredict_plot = (input("Would you like to plot metapredict/pLDDT profiles for candidate sequences? - y recommended (y/n): "))
 
 ## for each file in onlyfiles without output directory already existing
 for file in onlyfiles:
@@ -113,8 +113,8 @@ for file in onlyfiles:
     ## validate if the file is fasta, if true, complete pipeline
     while validate_fasta(file):   
         ## make directories for outputs
-        destination_folder="{}_outputs".format(file)
-        directory = "{}_outputs/metapredict_plots".format(file)
+        destination_folder="{}_FLIPPer_outputs".format(file)
+        directory = "{}_FLIPPer_outputs/metapredict_plots".format(file)
         os.mkdir(destination_folder)
         os.makedirs(directory)
         

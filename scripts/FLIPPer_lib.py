@@ -45,7 +45,7 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     values_out=[]
     print("Running sequence analysis of " "'"+file+"'"+"\n")
     print("Temporary files will be created within the directory, please do not remove them.")
-    print("Once complete, the outputs will be placed in {}_outputs".format(file))
+    print("Once complete, the outputs will be placed in {}_FLIPPer_outputs".format(file))
     for record in SeqIO.parse(file,'fasta'): #input the file from master script as "f", in fasta format
         ## Import sequences from "file" passed from master script as f
         ## Then output sequecne to pre-defined list
@@ -97,7 +97,7 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     RatiodfSerine= Ratiodf.loc[(df['%S'])>=float(Serine)]
     RatiodfSerineAlanine= RatiodfSerine.loc[df['%A']>=float(Alanine)]
     RatiodfPI = RatiodfSerineAlanine.loc[df['pI']>=float(pI)]    
-    RatiodfPI.to_csv('sequence_analysis/%s_FilteredCandidates.TSV' % no_extension, index=None, sep='	')
+    RatiodfPI.to_csv('sequence_analysis/%s_FilteredCandidates.csv' % no_extension, index=None, sep=',')
     ## Filter sequences and IDs from dataframe
     ## Then write to temporary file used for Xstream
     FASTA=RatiodfPI.iloc[:,0:2]
