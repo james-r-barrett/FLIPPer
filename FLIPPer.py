@@ -36,8 +36,8 @@ PATH = os.getcwd()
 onlyfiles = [f for f in listdir(PATH) if isfile (join(PATH,f))]
 package_files = ["FLIPPer.py", "Readme.txt", "Changelog.txt", "desktop.ini", ".DS_Store", ".gitattributes"]
 for file in package_files:
-	if os.path.isfile(file):
-    		onlyfiles.remove(file)
+    if os.path.isfile(file):
+            onlyfiles.remove(file)
 
 ## Define graphics for print outputs
 lineenter = "\n" + "=========================================================" + "\n" 
@@ -116,15 +116,21 @@ for file in onlyfiles:
         destination_folder="{}_FLIPPer_outputs".format(file)
         directory = "{}_FLIPPer_outputs/metapredict_plots".format(file)
         os.mkdir(destination_folder)
-        os.makedirs(directory)
+        
+        if metapredict_plot == 'y':
+            os.makedirs(directory)
         
         ## run analysis and filtering module
         analysis_and_filtering(file, pI, THRatio, Serine, Alanine, Aromatic, Electrostatic, full_output)
-        
+
         ## run XSTREAM using filtered sequences
         subprocess.call(["java", "-Xmx1000m", "-Xms1000m", "-jar", "scripts/xstream.jar", "CandidateSequences_Temp.FASTA", "-e"+str(Copy), "-i"+str(Word), "-I" +str(Consensus), "-g" +str(Gaps), "-m" +str(minPeriod), "-x" +str(maxPeriod), "-a"+str(file), "-t1", "-T" +str(Coverage)])
         
         ## find html file which is output from XSTREAM, extract sequences, then run metapredict module against
+        
+        print(lineenter)
+        print("Extracting filtered candidates from XSTREAM.")   
+
         for f in os.listdir(PATH):
             if f.endswith("_2.html"):
                 ## extract sequence IDs, then retrieve sequences from input file and output temp file for iupred/filtering
@@ -137,12 +143,13 @@ for file in onlyfiles:
                 ## run XSTREAM again on filtered sequences
                 ## not ideal in terms of speed, but cleans up the outputs
                 subprocess.call(['java', '-Xmx1000m', '-Xms1000m', '-jar', 'scripts/xstream.jar', 'Temp_xstream_filtered.fasta', "-e"+str(Copy), "-i"+str(Word), "-I" +str(Consensus), "-g" +str(Gaps), "-m" +str(minPeriod), "-x" +str(maxPeriod), "-a"+str(file), "-t1", "-T" +str(Coverage)], stdout=subprocess.DEVNULL)   
-                print(lineenter)
-                print("XSTREAM analysis of filtered proteins finished!")
-                print(lineenter)
+
+                print("Done!")
 
                 ## run metapredict module against filtered sequences
                 metapredict_htp('Temp_xstream_filtered.fasta',directory, metapredict_plot, metapredict_filter_value)
+
+                print("Tidying up...")  
 
                 for x in glob.glob("XSTREAM*"):
                     os.remove(x)
@@ -150,6 +157,7 @@ for file in onlyfiles:
                 ## not ideal in terms of speed, but cleans up the outputs
                 subprocess.call(['java', '-Xmx1000m', '-Xms1000m', '-jar', 'scripts/xstream.jar', 'candidate_sequences.fasta', "-e"+str(Copy), "-i"+str(Word), "-I" +str(Consensus), "-g" +str(Gaps), "-m" +str(minPeriod), "-x" +str(maxPeriod), "-a"+str(file), "-t1", "-T" +str(Coverage)], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT) 
 
+        print("Done!")
         print(lineenter)
         
         ## pass variables from input to output_variables module to write variables file

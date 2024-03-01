@@ -187,7 +187,7 @@ def xstream_extract2(f, input_file, Aromatic, Electrostatic):
                 number_after_filtering.append(record)
     print(lineenter)
     print("Number of sequences before filtering repeat regions:",len(number_before_filterting))
-    print("Number of sequences after filtering repeat regions:",len(number_after_filtering))
+    print("Number of sequences after filtering repeat regions with "+str(Aromatic)+ ' aromatic (W/Y/F) and ' +str(Electrostatic)+ ' electrostatic (D/E/R/K) residues:',len(number_after_filtering))
     print(lineenter)
 
 def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_value):
@@ -195,6 +195,8 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
     import re
     import metapredict as meta
     import pandas as pd
+    print("Initialising metapredict module...\n")
+    print("Filtering candidates with "+str(metapredict_filter_value)+'% disorder or more.')
     protfasta_seqs = protfasta.read_fasta(file_name, invalid_sequence_action = 'convert', return_list = True)
     IDs = []
     sequences = []
@@ -206,16 +208,16 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
     fasta_IDs = [">" + ID for ID in IDs]
     dict = {'IDs': fasta_IDs, 'seq': sequences, 'score': disorder_score} 
     df=pd.DataFrame(dict)
+    filtered_df=df[df['score']>metapredict_filter_value]
+    filtered_cands=filtered_df.iloc[:,0:2]
+    filtered_cands.to_csv('candidate_sequences.fasta', index=None, header=None, sep='\n')
+    filtered_cands.to_csv('candidate_sequences.csv', index=None, header=None, sep=',')
+    candidate_number = len(filtered_df.index)
+    print(str(candidate_number)+' candidates identified after metapredict filtering!\n')
     if metapredict_plot == 'y':
-        filtered_df=df[df['score']>50]
-        filtered_cands=filtered_df.iloc[:,0:2]
-        filtered_cands.to_csv('candidate_sequences.fasta', index=None, header=None, sep='\n')
-        filtered_cands.to_csv('candidate_sequences.csv', index=None, header=None, sep=',')
         protfasta_seqs = protfasta.read_fasta("candidate_sequences.fasta", invalid_sequence_action = 'convert', return_list = True)
-        n=len(protfasta_seqs)
         i=0
-        print("Initialising metapredict module...")
-        print('Number of sequences for metapredict filtering/plotting: '+str(n)+ '.\n')
+        print('Number of sequences for metapredict filtering/plotting: '+str(candidate_number)+ '.\n')
         for seqs in protfasta_seqs:
             PlotID=re.sub("\||\*|\?|\.|\/|\"|\<|\>|\:","_",seqs[0])
             PlotID=PlotID.split(' ')[0]
