@@ -34,7 +34,7 @@ PATH = os.getcwd()
 
 ## Find all non-directory files in the current directory, then remove FLIPPer default files and OS-specfic hidden files from list
 onlyfiles = [f for f in listdir(PATH) if isfile (join(PATH,f))]
-package_files = ["FLIPPer.py", "Readme.txt", "Changelog.txt", "desktop.ini", ".DS_Store"]
+package_files = ["FLIPPer.py", "Readme.txt", "Changelog.txt", "desktop.ini", ".DS_Store", ".gitattributes"]
 for file in package_files:
 	if os.path.isfile(file):
     		onlyfiles.remove(file)
@@ -138,7 +138,7 @@ for file in onlyfiles:
                 ## not ideal in terms of speed, but cleans up the outputs
                 subprocess.call(['java', '-Xmx1000m', '-Xms1000m', '-jar', 'scripts/xstream.jar', 'Temp_xstream_filtered.fasta', "-e"+str(Copy), "-i"+str(Word), "-I" +str(Consensus), "-g" +str(Gaps), "-m" +str(minPeriod), "-x" +str(maxPeriod), "-a"+str(file), "-t1", "-T" +str(Coverage)], stdout=subprocess.DEVNULL)   
                 print(lineenter)
-                print("Xstream analysis of filtered proteins finished!")
+                print("XSTREAM analysis of filtered proteins finished!")
                 print(lineenter)
 
                 ## run metapredict module against filtered sequences
@@ -162,7 +162,7 @@ for file in onlyfiles:
         os.remove("Temp_Xstream_positives.fasta")
         for z in glob.glob("XSTREAM*"):
             move_files(z, destination_folder, PATH)      
-        move_files("Sequence_Analysis", destination_folder, PATH)
+        move_files("sequence_analysis", destination_folder, PATH)
         move_files(file, destination_folder, PATH)
         move_files(file+"_variables.txt", destination_folder, PATH)
         move_files("candidate_sequences.fasta", destination_folder, PATH)

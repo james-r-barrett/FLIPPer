@@ -82,22 +82,22 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     df.insert(11,'Charged Ratio (Positive/Negative)', ((df['%R'] + df['%K'])/(df['%D'] + df['%E'])))
     df.insert(12,'pI', pI_out)
     ## Create Sequence Analysis directory to put output in
-    if not os.path.exists('Sequence_Analysis'):
-        os.mkdir('Sequence_Analysis')
-        print("Temporary directory " "'""Sequence_Analysis""'" " created")
+    if not os.path.exists('sequence_analysis'):
+        os.mkdir('sequence_analysis')
+        print("Temporary directory " "'""sequence_analysis""'" " created")
     else:
-        print("Directory ""'""Sequence_Analysis""'" "already exists, please analyse output carefully")
+        print("Directory ""'""sequence_analysis""'" "already exists, please analyse output carefully")
     ## Create filename from input by removing extension with regex command
     no_extension = re.match(r"(.*)\.",file).group(0)
     ## If user specifies to keep full sequence analysis, write to file
     if full_output == "y":
-        df.to_csv('Sequence_Analysis/%s_FullAnalysis.txt' % no_extension, index = None, sep='\t')
+        df.to_csv('sequence_analysis/%s_FullAnalysis.txt' % no_extension, index = None, sep='\t')
     ## Create filtered variable table and write to file
     Ratiodf = df[df['Ratio (T/H)']>=float(THratio)]
     RatiodfSerine= Ratiodf.loc[(df['%S'])>=float(Serine)]
     RatiodfSerineAlanine= RatiodfSerine.loc[df['%A']>=float(Alanine)]
     RatiodfPI = RatiodfSerineAlanine.loc[df['pI']>=float(pI)]    
-    RatiodfPI.to_csv('Sequence_Analysis/%s_FilteredCandidates.TSV' % no_extension, index=None, sep='	')
+    RatiodfPI.to_csv('sequence_analysis/%s_FilteredCandidates.TSV' % no_extension, index=None, sep='	')
     ## Filter sequences and IDs from dataframe
     ## Then write to temporary file used for Xstream
     FASTA=RatiodfPI.iloc[:,0:2]
@@ -107,7 +107,7 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     seqno = (len(df.index))
     filteredseqno = (len(RatiodfPI.index))
     print("Sequence analysis of " +str(seqno)+ " sequences complete!")
-    print(str(filteredseqno) + " sequences after filtering, passing to Xstream.")
+    print(str(filteredseqno) + " sequences after filtering, passing to XSTREAM.")
     print(lineenter)
 
 ## module to extract candidate sequences from html3 file output from Xstream
