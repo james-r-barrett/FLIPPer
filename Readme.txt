@@ -17,17 +17,17 @@ Outputs:
 
 For each of the analysed FASTA files several output are produced.
 
-1. IUPred plots
-	- Overlaid PNGs of disorder prediction, net charge per residue (NCPR) and hydrophobicity profiles for each entry in the FASTA file.
+1. metpredict plots
+	- PDF graphs with metapredict disorder score plotted, as well as predicted AF2 pLDDT.
 2. XSTREAM outputs
 	- The identified tandem repeats in each of the sequences, viewable as a linked HTML file (suffix _out_2.html)
 3. Candidate sequences
 	- A FASTA file of all of the outputted candidate linker sequences.
-	- A TSV file of the same sequences
+	- A csv file of the same sequences
 4. Variables file
 	- A text file containing the user-defined variables used in the pipeline run.
 5. Sequences analysis
-	- TSV files of the sequence analysis completed as step 1 of the sequence filtering
+	- csv files of the sequence analysis completed as step 1 of the sequence filtering
 
 
 Requirements:
