@@ -36,9 +36,9 @@ python 3.10 or higher
 biopython
 matplotlib
 beautifulsoup4
-localcider
 pandas
-
+metapredict
+cython
 
 This pipeline utilises XSTREAM, a tandem repeat detection software developed by Aaron Newman and James Cooper. If you make use of this pipeline, please be sure to also credit their work:
 
