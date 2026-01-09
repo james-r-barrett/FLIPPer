@@ -10,7 +10,7 @@ Alanine= "0.01"
 Copy= "3"
 Word= "0.3625"
 Consensus= "0.4"
-Gaps= "50"
+Gaps= "55"
 minPeriod= "20"
 maxPeriod= "120"
 Coverage= "0.75"
@@ -100,8 +100,11 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     RatiodfPI.to_csv('sequence_analysis/%s_FilteredCandidates.csv' % no_extension, index=None, sep=',')
     ## Filter sequences and IDs from dataframe
     ## Then write to temporary file used for Xstream
-    FASTA=RatiodfPI.iloc[:,0:2]
-    FASTA.to_csv('CandidateSequences_Temp.FASTA', index=None, header=None, sep='\n')
+    FASTA = RatiodfPI.iloc[:, 0:2]
+    # Write to FASTA file
+    with open('CandidateSequences_Temp.FASTA', 'w') as f:
+        for i, row in FASTA.iterrows():
+            f.write(f">{row['ID']}\n{row['Sequence']}\n")
     ## Get number of sequence in input and output
     ## Print to user numbers
     seqno = (len(df.index))
@@ -131,11 +134,11 @@ def xstream_extract2(f, input_file, Aromatic, Electrostatic):
         content=soup.get_text()
         ## use regex to extract the consensus repeat motif
         ## separately, use regex to extract ID
-        repeat_sequence = re.findall("=\n[\D]*\n", content)
+        repeat_sequence = re.findall(r"=\n[\D]*\n", content)
         ID = re.findall(".*Position", content)
         ## clean up regex extractions
         for item in repeat_sequence:
-            rep_seq = re.sub("[:|\*| ]*\n", "", item)
+            rep_seq = re.sub(r"[:|\*| ]*\n", "", item)
             rep_seq2 = re.sub("=","", rep_seq)
             repeats.append(rep_seq2)
         ## clean up regex extraction of ID
@@ -143,10 +146,11 @@ def xstream_extract2(f, input_file, Aromatic, Electrostatic):
             ID2 = re.sub("Position","", item)
             IDs.append(ID2)
         ## add identifier, then create pandas dataframe with ID and consensus repeat motif, then write to temp file in fasta format
-        IDs_fasta = [">" + ID for ID in IDs]
+        IDs_fasta = [">" + ID.lstrip(">") for ID in IDs]
         results = zip(IDs_fasta, repeats)
-        df_xstream = pd.DataFrame(results)
-        df_xstream.to_csv('Temp_Xstream_positives.fasta', index=None, header=None, sep='\n')
+        with open('Temp_Xstream_positives.fasta', 'w') as f:
+            for ID_line, repeat_seq in zip(IDs_fasta, repeats):
+                f.write(f"{ID_line.strip()}\n{repeat_seq.strip()}\n")
     ## lists for post-xstream filtering
     xstream_sequence =[]
     xstream_AA = []
@@ -210,7 +214,10 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
     df=pd.DataFrame(dict)
     filtered_df=df[df['score']>metapredict_filter_value]
     filtered_cands=filtered_df.iloc[:,0:2]
-    filtered_cands.to_csv('candidate_sequences.fasta', index=None, header=None, sep='\n')
+    print(filtered_cands)
+    with open('candidate_sequences.fasta', 'w') as f:
+        for _, row in filtered_cands.iterrows():
+            f.write(f"{row['IDs'].strip()}\n{row['seq'].strip()}\n")
     filtered_cands.to_csv('candidate_sequences.csv', index=None, header=None, sep=',')
     candidate_number = len(filtered_df.index)
     print(str(candidate_number)+' candidates identified after metapredict filtering!\n')
@@ -219,7 +226,7 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
         i=0
         print('Number of sequences for metapredict filtering/plotting: '+str(candidate_number)+ '.\n')
         for seqs in protfasta_seqs:
-            PlotID=re.sub("\||\*|\?|\.|\/|\"|\<|\>|\:","_",seqs[0])
+            PlotID = re.sub(r"[|*?./\"<>:]", "_", seqs[0])
             PlotID=PlotID.split(' ')[0]
             meta.graph_disorder(seqs[1], pLDDT_scores=True, DPI=300, output_file=directory+'/%s_metapredict_plot.pdf' %PlotID, title = "%s" %seqs[0])
             i += 1      
