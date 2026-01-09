@@ -214,7 +214,6 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
     df=pd.DataFrame(dict)
     filtered_df=df[df['score']>metapredict_filter_value]
     filtered_cands=filtered_df.iloc[:,0:2]
-    print(filtered_cands)
     with open('candidate_sequences.fasta', 'w') as f:
         for _, row in filtered_cands.iterrows():
             f.write(f"{row['IDs'].strip()}\n{row['seq'].strip()}\n")
