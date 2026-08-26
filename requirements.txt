@@ -1,0 +1,7 @@
+biopython>=1.83
+matplotlib
+pandas
+metapredict
+cython
+protfasta
+beautifulsoup4  # only needed for --engine xstream

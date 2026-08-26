@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+
+# Virtual environments
+.venv/
+
+# FLIPPer run outputs
+*_FLIPPer_outputs/
+*_characterization/

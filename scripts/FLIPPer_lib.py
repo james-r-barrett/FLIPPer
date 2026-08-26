@@ -1,20 +1,20 @@
-## Define graphics for print outputs
-lineenter = "\n" + "=========================================================" + "\n" 
+## re-exported so `from FLIPPer_lib import *` (as FLIPPer.py does) also picks up the report
+## builder shared with both engines - see scripts/candidate_report.py
+from candidate_report import build_candidate_report
 
-## Default variables
+## Define graphics for print outputs
+lineenter = "\n" + "=========================================================" + "\n"
+
+## Default variables shared by both repeat-detection engines
 ## Specify default values, these are overwritten by user input if y answered
 pI= "8"
+pI_direction = "min"
 THRatio= "1"
 Serine= "0.05"
 Alanine= "0.01"
-Copy= "3"
-Word= "0.3625"
-Consensus= "0.4"
-Gaps= "55"
 minPeriod= "20"
 maxPeriod= "120"
 Coverage= "0.75"
-Type= "long"
 Aromatic= "1"
 Electrostatic= "2"
 
@@ -22,18 +22,20 @@ Electrostatic= "2"
 ## returns true if is fasta file
 def validate_fasta(filename):
     from Bio import SeqIO
-    with open(filename, "r", encoding='ascii') as handle:
-        fasta = SeqIO.parse(handle, "fasta")
-        return any(fasta)
+    try:
+        with open(filename, "r", encoding='utf-8') as handle:
+            fasta = SeqIO.parse(handle, "fasta-pearson")
+            return any(fasta)
+    except (UnicodeDecodeError, ValueError):
+        return False
 
 ## module to complete analysis of input sequences with ProtParam from biopython
 ## then filter to input variables using pandas dataframe
-def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electrostatic, full_output):
+def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electrostatic, full_output, pI_direction="min"):
     import os
     from Bio import SeqIO
     from Bio.SeqUtils.ProtParam import ProteinAnalysis
     import pandas as pd
-    import re
     import fileinput
     print(lineenter)
     ## Define empty lists to use in below analysis
@@ -41,12 +43,12 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     length_out=[]
     AA_out=[]
     pI_out=[]
-    ID_out=[]  
+    ID_out=[]
     values_out=[]
     print("Running sequence analysis of " "'"+file+"'"+"\n")
     print("Temporary files will be created within the directory, please do not remove them.")
     print("Once complete, the outputs will be placed in {}_FLIPPer_outputs".format(file))
-    for record in SeqIO.parse(file,'fasta'): #input the file from master script as "f", in fasta format
+    for record in SeqIO.parse(file,'fasta-pearson'): #input the file from master script as "f", in fasta format
         ## Import sequences from "file" passed from master script as f
         ## Then output sequecne to pre-defined list
         ## And output length of sequence to separate list
@@ -59,9 +61,13 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
         ## Then get the isoelectric point of the sequence
         ## And output ID to separate list
         Y = ProteinAnalysis(sequence)
-        AA_out.append(Y.get_amino_acids_percent()) #gives you the aminoacid percentage of all the aminoacids
+        ## Y.amino_acids_percent is on a 0-100 scale in current Biopython versions, but the
+        ## Serine/Alanine thresholds below (and the Aromatic/Electrostatic residue-count columns
+        ## further down, which multiply these by Length) assume a 0-1 fraction - convert here so
+        ## --serine/--alanine keep meaning "fraction of residues", not "percent >= 0.05"
+        AA_out.append({aa: value / 100.0 for aa, value in Y.amino_acids_percent.items()}) #gives you the aminoacid fraction of all the aminoacids
         pI_out.append(Y.isoelectric_point())
-        ID_out.append('>' + format(record.id))    
+        ID_out.append('>' + format(record.id))
     ## Extract values from AA_out list, which contain data in format A: XXXX, where XXXX is desired info
     for listitem in AA_out:
         values_out.append(list(listitem.values()))
@@ -72,7 +78,7 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     df.insert(1,'Sequence', seq_out)
     df.insert(2,'Length', length_out)
     df.insert(3,'Aromatic',((df['%F']*df['Length'])+(df['%W']*df['Length'])+(df['%Y']*df['Length'])))
-    df.insert(4,'Electrostatic',((df['%R']*df['Length'])+(df['%K']*df['Length'])+(df['%D']*df['Length'])+(df['%E']*df['Length'])))  
+    df.insert(4,'Electrostatic',((df['%R']*df['Length'])+(df['%K']*df['Length'])+(df['%D']*df['Length'])+(df['%E']*df['Length'])))
     df.insert(5,'Fraction Expanding', (df['%R'] + df['%K'] + df['%D'] + df['%E'] + df['%P']))
     df.insert(6,'Fraction Disorder Promoting', (df['%A'] + df['%G'] + df['%R'] + df['%D'] + df['%H'] + df['%Q'] + df['%K'] + df['%S'] + df['%E'] + df['%P']))
     df.insert(7,'Helix%', (df['%F'] + df['%I'] + df['%L'] + df['%V'] + df['%W'] + df['%Y']))
@@ -87,8 +93,8 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
         print("Temporary directory " "'""sequence_analysis""'" " created")
     else:
         print("Directory ""'""sequence_analysis""'" "already exists, please analyse output carefully")
-    ## Create filename from input by removing extension with regex command
-    no_extension = re.match(r"(.*)\.",file).group(0)
+    ## Create filename from input by removing extension
+    no_extension = os.path.splitext(file)[0]
     ## If user specifies to keep full sequence analysis, write to file
     if full_output == "y":
         df.to_csv('sequence_analysis/%s_FullAnalysis.txt' % no_extension, index = None, sep='\t')
@@ -96,10 +102,16 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     Ratiodf = df[df['Ratio (T/H)']>=float(THratio)]
     RatiodfSerine= Ratiodf.loc[(df['%S'])>=float(Serine)]
     RatiodfSerineAlanine= RatiodfSerine.loc[df['%A']>=float(Alanine)]
-    RatiodfPI = RatiodfSerineAlanine.loc[df['pI']>=float(pI)]    
+    ## pI_direction="min" (default) keeps basic proteins (pI >= threshold) - the profile of
+    ## known pyrenoid linkers like EPYC1/CsLinker. pI_direction="max" flips this to keep acidic
+    ## proteins (pI <= threshold) instead, for target families with the opposite composition.
+    if str(pI_direction).lower() == "max":
+        RatiodfPI = RatiodfSerineAlanine.loc[df['pI']<=float(pI)]
+    else:
+        RatiodfPI = RatiodfSerineAlanine.loc[df['pI']>=float(pI)]
     RatiodfPI.to_csv('sequence_analysis/%s_FilteredCandidates.csv' % no_extension, index=None, sep=',')
     ## Filter sequences and IDs from dataframe
-    ## Then write to temporary file used for Xstream
+    ## Then write to temporary file used for the repeat-detection engine
     FASTA = RatiodfPI.iloc[:, 0:2]
     # Write to FASTA file
     with open('CandidateSequences_Temp.FASTA', 'w') as f:
@@ -110,116 +122,33 @@ def analysis_and_filtering(file, pI, THratio, Serine, Alanine, Aromatic, Electro
     seqno = (len(df.index))
     filteredseqno = (len(RatiodfPI.index))
     print("Sequence analysis of " +str(seqno)+ " sequences complete!")
-    print(str(filteredseqno) + " sequences after filtering, passing to XSTREAM.")
+    print(str(filteredseqno) + " sequences after filtering, passing to repeat detection.")
     print(lineenter)
 
-## module to extract candidate sequences from html3 file output from Xstream
-## then optionally filter to only include sequences with at least one aromatic and three electrostatic residues in repeat region
-def xstream_extract2(f, input_file, Aromatic, Electrostatic):
-    from bs4 import BeautifulSoup
-    import sys
-    import fileinput
-    import re
-    import os
-    import pandas as pd
-    from Bio import SeqIO
-    from Bio.SeqUtils.ProtParam import ProteinAnalysis
-    ## lists for repeat regions and their IDs
-    repeats=[]
-    IDs=[]
-    with open(f) as html_file:
-        ## use bautifulsoup html parser to extract text from _2.html file passed from FLIPPer.py
-        soup= BeautifulSoup(html_file, "html.parser")
-        html_file.close()
-        content=soup.get_text()
-        ## use regex to extract the consensus repeat motif
-        ## separately, use regex to extract ID
-        repeat_sequence = re.findall(r"=\n[\D]*\n", content)
-        ID = re.findall(".*Position", content)
-        ## clean up regex extractions
-        for item in repeat_sequence:
-            rep_seq = re.sub(r"[:|\*| ]*\n", "", item)
-            rep_seq2 = re.sub("=","", rep_seq)
-            repeats.append(rep_seq2)
-        ## clean up regex extraction of ID
-        for item in ID:
-            ID2 = re.sub("Position","", item)
-            IDs.append(ID2)
-        ## add identifier, then create pandas dataframe with ID and consensus repeat motif, then write to temp file in fasta format
-        IDs_fasta = [">" + ID.lstrip(">") for ID in IDs]
-        results = zip(IDs_fasta, repeats)
-        with open('Temp_Xstream_positives.fasta', 'w') as f:
-            for ID_line, repeat_seq in zip(IDs_fasta, repeats):
-                f.write(f"{ID_line.strip()}\n{repeat_seq.strip()}\n")
-    ## lists for post-xstream filtering
-    xstream_sequence =[]
-    xstream_AA = []
-    xstream_AA_val =[]
-    xstream_ID=[]
-    number_before_filterting=[]
-    for record in SeqIO.parse("Temp_Xstream_positives.fasta",'fasta'): #input the file from master script as "f", in fasta format
-        number_before_filterting.append(record)
-        ## Import fasta format temp file with ID and consensus repeat outputted from above
-        ## Then output sequence to pre-defined list
-        xsequence=format(record.seq)
-        xstream_sequence.append(xsequence)
-        Y = ProteinAnalysis(xsequence)
-        ## output counted amino acids for each motif
-        xstream_AA.append(Y.count_amino_acids())
-        xstream_ID.append(format(record.id))   
-    ## extract just values from protparam output
-    for listitem in xstream_AA:
-        xstream_AA_val.append(list(listitem.values()))
-    ## create dataframe and input AA count in labelled columns
-    ## then insert ID extracted from xstream output
-    ## then create column for aromatic and electrostatic count per consensus
-    xstream_df = pd.DataFrame(xstream_AA_val, columns = ['A','C','D','E','F','G','H','I','K','L','M','N','P','Q','R','S','T','V','W','Y'])
-    xstream_df.insert(0, 'ID', xstream_ID)
-    xstream_df.insert(1, 'Aromatics', (xstream_df['F']+xstream_df['W']+xstream_df['Y']))
-    xstream_df.insert(2, 'Electrostatics', (xstream_df['D']+xstream_df['E']+xstream_df['R']+xstream_df['K']))
-    ## filter datafram to threshold value (either default or inputted)
-    xstream_dfaromatic = xstream_df[xstream_df['Aromatics']>=float(Aromatic)]
-    xstream_dfaromaticelectrostatic = xstream_dfaromatic.loc[xstream_df['Electrostatics']>=float(Electrostatic)]
-    ## output the IDs of the filtered proteins to a list
-    positive_IDs = list(xstream_dfaromaticelectrostatic['ID'])
-    ## creat new temp file that contains fasta format of IDs of filtered proteins with sequence extracted from input_file passed from FLIPPer.py
-    number_after_filtering=[]
-    with open ("Temp_xstream_filtered.fasta", "w") as f:
-        for record in SeqIO.parse(input_file, "fasta"):
-            if record.id in positive_IDs:
-                SeqIO.write([record],f,"fasta")
-                number_after_filtering.append(record)
-    print(lineenter)
-    print("Number of sequences before filtering repeat regions:",len(number_before_filterting))
-    print("Number of sequences after filtering repeat regions with "+str(Aromatic)+ ' aromatic (W/Y/F) and ' +str(Electrostatic)+ ' electrostatic (D/E/R/K) residues:',len(number_after_filtering))
-    print(lineenter)
-
-def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_value):
+## module to write out the final candidate set (already filtered upstream, per-repeat-region, on
+## composition and metapredict disorder - see xstream_extract2/detect_repeats_extract) to
+## candidate_sequences.fasta/.csv, and optionally plot each one's whole-protein disorder/pLDDT
+## profile for visual inspection - engine-independent, shared by both engines
+def metapredict_htp(file_name, directory, metapredict_plot):
     import protfasta
     import re
     import metapredict as meta
     import pandas as pd
-    print("Initialising metapredict module...\n")
-    print("Filtering candidates with "+str(metapredict_filter_value)+'% disorder or more.')
     protfasta_seqs = protfasta.read_fasta(file_name, invalid_sequence_action = 'convert', return_list = True)
     IDs = []
     sequences = []
-    disorder_score = []
     for seqs in protfasta_seqs:
         IDs.append(seqs[0])
         sequences.append(seqs[1])
-        disorder_score.append(meta.percent_disorder(seqs[1]))
     fasta_IDs = [">" + ID for ID in IDs]
-    dict = {'IDs': fasta_IDs, 'seq': sequences, 'score': disorder_score} 
+    dict = {'IDs': fasta_IDs, 'seq': sequences}
     df=pd.DataFrame(dict)
-    filtered_df=df[df['score']>metapredict_filter_value]
-    filtered_cands=filtered_df.iloc[:,0:2]
     with open('candidate_sequences.fasta', 'w') as f:
-        for _, row in filtered_cands.iterrows():
+        for _, row in df.iterrows():
             f.write(f"{row['IDs'].strip()}\n{row['seq'].strip()}\n")
-    filtered_cands.to_csv('candidate_sequences.csv', index=None, header=None, sep=',')
-    candidate_number = len(filtered_df.index)
-    print(str(candidate_number)+' candidates identified after metapredict filtering!\n')
+    df.to_csv('candidate_sequences.csv', index=None, header=None, sep=',')
+    candidate_number = len(df.index)
+    print(str(candidate_number)+' final candidates written to candidate_sequences.fasta/csv.\n')
     if metapredict_plot == 'y':
         protfasta_seqs = protfasta.read_fasta("candidate_sequences.fasta", invalid_sequence_action = 'convert', return_list = True)
         i=0
@@ -228,41 +157,40 @@ def metapredict_htp(file_name, directory, metapredict_plot, metapredict_filter_v
             PlotID = re.sub(r"[|*?./\"<>:]", "_", seqs[0])
             PlotID=PlotID.split(' ')[0]
             meta.graph_disorder(seqs[1], pLDDT_scores=True, DPI=300, output_file=directory+'/%s_metapredict_plot.pdf' %PlotID, title = "%s" %seqs[0])
-            i += 1      
+            i += 1
             print("Plotted " +str(i)+" sequences.")
 
-##module to output variables
-def output_variables(file, pI, THRatio, Serine, Alanine, Copy, Word, Consensus, Gaps, minPeriod, maxPeriod, Coverage, Type, Aromatic, Electrostatic, metapredict_filter_value):
-    import sys    
-    print("Outputting variables used.")
-    tem = sys.stdout
-    sys.stdout= m =open('{}_variables.txt'.format(file),'w')
-    print("==========================================")
-    print("Filtering variables:")
-    print("\tpI Threshold: ", pI)
-    print("\tTurn/Helix Ratio Threshold: ", THRatio)
-    print("\tSerine content threshold: ", Serine)
-    print("\tAlanine content threshold: ", Alanine)
-    print("==========================================")
-    print("XSTREAM variables:")
-    print("\tMinimum copy number: ", Copy)
-    print("\tMinmum word match: ", Word)
-    print("\tConsensus match: ", Consensus)
-    print("\tMaximum gaps in repeats: ", Gaps)
-    print("\tMinimum repeat period: ", minPeriod)
-    print("\tMaximum repeat period: ", maxPeriod)
-    print("\tSequence coverage: ", Coverage)
-    print("==========================================")
-    print("Post-XSTREAM Filtering")
-    print("\tNumber of aromatic residues: ", Aromatic)
-    print("\tNumber of electrostatic residues: ", Electrostatic)
-    print("==========================================")
-    print("metapredict Filtering")
-    print("\tmetapredict filtering value: ", metapredict_filter_value)
-    sys.stdout = tem
-    m.close()
-
-## module to move files after pipeline run       
+## module to move files after pipeline run
 def move_files(source_file_name, destination_folder_name, path):
     import os
     os.rename("{}/{}".format(path, source_file_name), "{}/{}/{}".format(path, destination_folder_name, source_file_name))
+
+## module to remove known temporary files left over from a (possibly failed) pipeline run
+## so that they can never be picked up as input files on a later run of FLIPPer.py - the shared
+## temp file plus whatever engine-specific ones the chosen engine module knows about
+def cleanup_temp_files(engine):
+    import os
+    if os.path.exists("CandidateSequences_Temp.FASTA"):
+        os.remove("CandidateSequences_Temp.FASTA")
+    engine.cleanup_extra()
+
+## module to move whatever output artifacts exist for a file into its destination folder
+## called unconditionally at the end of each file's processing (success or failure) so that
+## partial results never linger in, or pollute, the working directory - common artifacts (both
+## engines produce these) plus whatever engine-specific ones the chosen engine module knows about
+def finalize_output(file, destination_folder, path, engine):
+    import os
+    import glob
+    engine.finalize_extra(destination_folder, path)
+    for z in glob.glob("*_candidate_report.html"):
+        move_files(z, destination_folder, path)
+    if os.path.exists("sequence_analysis"):
+        move_files("sequence_analysis", destination_folder, path)
+    if os.path.exists(file):
+        move_files(file, destination_folder, path)
+    if os.path.exists(file+"_variables.txt"):
+        move_files(file+"_variables.txt", destination_folder, path)
+    if os.path.exists("candidate_sequences.fasta"):
+        move_files("candidate_sequences.fasta", destination_folder, path)
+    if os.path.exists("candidate_sequences.csv"):
+        move_files("candidate_sequences.csv", destination_folder, path)
