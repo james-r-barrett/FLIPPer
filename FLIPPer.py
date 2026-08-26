@@ -88,7 +88,7 @@ PATH = os.getcwd()
 
 ## Find all non-directory files in the current directory, then remove FLIPPer default files and OS-specfic hidden files from list
 onlyfiles = [f for f in listdir(PATH) if isfile (join(PATH,f))]
-package_files = ["FLIPPer.py", "README.md", "Changelog.txt", "requirements.txt", "desktop.ini", ".DS_Store", ".gitattributes"]
+package_files = ["FLIPPer.py", "README.md", "Changelog.txt", "requirements.txt", "desktop.ini", ".DS_Store", ".gitattributes", "LICENSE", "icon.svg", ".gitignore"]
 for file in package_files:
     if os.path.isfile(file):
             onlyfiles.remove(file)

@@ -350,7 +350,8 @@ def process_file(file, PATH, directory, metapredict_plot, metapredict_filter_val
 ## linkers) and suggest FLIPPer search parameters from their observed pI, repeat structure and
 ## disorder. This is a standalone diagnostic action, not part of the proteome-scanning pipeline -
 ## it never filters anything, it just reports what the targets look like and suggests a starting
-## point for --pi/--min-copies/--min-period/--max-period/--metapredict-filter-value.
+## point for --pi/--serine/--alanine/--th-ratio/--min-copies/--min-period/--max-period/--coverage/
+## --min-score/--aromatic/--electrostatic/--metapredict-filter-value.
 def characterize(file):
     import os
     import glob
@@ -395,25 +396,45 @@ def characterize(file):
             for seq_id, group in report_df.groupby('ID'):
                 best = group.loc[group['Span'].idxmax()]
                 repeat_info[seq_id] = {'Repeat Period (aa)': best['Period'], 'Repeat Copies': best['Copies'],
+                                       'Repeat Score': best['Score'],
                                        'Begin': int(best['Begin']), 'End': int(best['End'])}
 
     if os.path.exists(report_csv):
         os.remove(report_csv)
 
-    ## disorder is reported over the detected repeat region itself where one was found (matching
-    ## the main pipeline's now region-specific disorder filter), falling back to the whole protein
-    ## for targets DetectRepeats found no repeat in
+    ## disorder/aromatic/electrostatic are reported over the detected repeat region itself where
+    ## one was found (matching the main pipeline's region-specific filters in
+    ## detect_repeats_extract), falling back to the whole protein for targets DetectRepeats found
+    ## no repeat in - Serine/Alanine/TH Ratio, by contrast, are whole-protein composition figures
+    ## the same way the main pipeline's own pre-repeat-detection filter (analysis_and_filtering)
+    ## computes them, so they're never region-restricted
     rows = []
     for seq_id, sequence in records:
         info = repeat_info.get(seq_id, {})
-        disorder_sequence = sequence[info['Begin'] - 1:info['End']] if 'Begin' in info else sequence
+        region = sequence[info['Begin'] - 1:info['End']] if 'Begin' in info else sequence
+        coverage = (info['End'] - info['Begin'] + 1) / len(sequence) if 'Begin' in info else None
+        analysis = ProteinAnalysis(sequence)
+        ## amino_acids_percent is 0-100 in current Biopython - divide by 100 to get the 0-1
+        ## fraction --serine/--alanine/--th-ratio are defined against, matching the same
+        ## conversion analysis_and_filtering applies to the real pipeline's own pre-filter
+        aa_percent = {aa: value / 100.0 for aa, value in analysis.amino_acids_percent.items()}
+        helix = aa_percent['F'] + aa_percent['I'] + aa_percent['L'] + aa_percent['V'] + aa_percent['W'] + aa_percent['Y']
+        turn = aa_percent['P'] + aa_percent['N'] + aa_percent['G'] + aa_percent['S']
+        region_counts = ProteinAnalysis(region).count_amino_acids()
         rows.append({
             'ID': seq_id,
             'Length': len(sequence),
-            'pI': ProteinAnalysis(sequence).isoelectric_point(),
-            'Percent Disorder': meta.percent_disorder(disorder_sequence),
+            'pI': analysis.isoelectric_point(),
+            'Serine %': aa_percent['S'],
+            'Alanine %': aa_percent['A'],
+            'TH Ratio': (turn / helix) if helix > 1e-9 else 10.0,
+            'Percent Disorder': meta.percent_disorder(region),
             'Repeat Period (aa)': info.get('Repeat Period (aa)'),
             'Repeat Copies': info.get('Repeat Copies'),
+            'Repeat Score': info.get('Repeat Score'),
+            'Repeat Coverage': coverage,
+            'Repeat Aromatic': region_counts['F'] + region_counts['W'] + region_counts['Y'],
+            'Repeat Electrostatic': region_counts['D'] + region_counts['E'] + region_counts['R'] + region_counts['K'],
         })
 
     df = pd.DataFrame(rows)
@@ -439,33 +460,88 @@ def characterize(file):
     def round_up_5(x):
         return 5 * math.ceil(x / 5)
 
+    def round_down_frac(x, step=0.05):
+        return step * math.floor(x / step)
+
     lines = [lineenter, "Suggested search parameters based on " + str(len(df)) + " target sequence(s):", ""]
 
-    ## --pi and --metapredict-filter-value are minimum thresholds in the main pipeline, so they're
-    ## padded downward only - padding both ways would suggest excluding the targets themselves.
-    ## --min-period/--max-period define a window, so they're padded outward on both ends.
-    ## --min-copies is also a minimum threshold, padded downward.
+    ## --pi/--metapredict-filter-value/--serine/--alanine/--th-ratio are minimum thresholds in the
+    ## main pipeline, so they're padded downward only - padding both ways would suggest excluding
+    ## the targets themselves. --serine/--alanine/--th-ratio in particular are enforced by
+    ## analysis_and_filtering() BEFORE repeat detection even runs - a target failing one of these
+    ## never reaches DetectRepeats at all, so they're computed here unconditionally (whole-protein
+    ## composition, not repeat-region-dependent) rather than skipped the way repeat-derived
+    ## suggestions below are when nothing was detected.
     pi_suggest = round(max(0.0, df['pI'].min() - 1.0), 1)
+    serine_suggest = round(max(0.0, df['Serine %'].min() - 0.02), 3)
+    alanine_suggest = round(max(0.0, df['Alanine %'].min() - 0.01), 3)
+    th_suggest = round(max(0.0, df['TH Ratio'].min() - 0.3), 2)
     disorder_suggest = max(0.0, round_down_5(df['Percent Disorder'].min() - 10.0))
     lines.append("\tpI: observed {:.2f} - {:.2f}  ->  --pi {:.1f}".format(df['pI'].min(), df['pI'].max(), pi_suggest))
+    lines.append("\tSerine content: observed {:.1%} - {:.1%}  ->  --serine {:.3f}{}".format(
+        df['Serine %'].min(), df['Serine %'].max(), serine_suggest,
+        "  (low - may not usefully separate these targets from typical proteins)" if serine_suggest <= 0.01 else ""))
+    lines.append("\tAlanine content: observed {:.1%} - {:.1%}  ->  --alanine {:.3f}{}".format(
+        df['Alanine %'].min(), df['Alanine %'].max(), alanine_suggest,
+        "  (low - may not usefully separate these targets from typical proteins)" if alanine_suggest <= 0.002 else ""))
+    lines.append("\tTurn/Helix ratio: observed {:.2f} - {:.2f}  ->  --th-ratio {:.2f}{}".format(
+        df['TH Ratio'].min(), df['TH Ratio'].max(), th_suggest,
+        "  (low - these targets aren't turn/coil-dominated the way EPYC1/CsLinker are; consider --th-ratio 0)" if th_suggest <= 0.2 else ""))
     lines.append("\t% Disorder (of repeat region, or whole protein if none detected): observed {:.1f} - {:.1f}  ->  --metapredict-filter-value {:.0f}".format(
         df['Percent Disorder'].min(), df['Percent Disorder'].max(), disorder_suggest))
+
+    example_flags = "--pi {:.1f} --serine {:.3f} --alanine {:.3f} --th-ratio {:.2f} --metapredict-filter-value {:.0f}".format(
+        pi_suggest, serine_suggest, alanine_suggest, th_suggest, disorder_suggest)
 
     if len(detected):
         copy_suggest = max(2, math.floor(detected['Repeat Copies'].min() - 1))
         period_pad = max(10, round_down_5(0.15 * detected['Repeat Period (aa)'].median()))
         min_period_suggest = max(10, round_down_5(detected['Repeat Period (aa)'].min() - period_pad))
         max_period_suggest = round_up_5(detected['Repeat Period (aa)'].max() + period_pad)
+        ## --coverage is also a minimum threshold (main pipeline keeps hits with
+        ## CoverageFraction >= --coverage) - pad downward like pi/copies/disorder above. Without
+        ## this, targets whose repeat region only spans part of the sequence (e.g. flanking
+        ## transit/signal peptide, or linker/terminal residues outside the repeat) fall below the
+        ## pipeline's 0.75 default and get silently dropped even though characterize found their
+        ## repeat just fine.
+        coverage_suggest = max(0.0, round(round_down_frac(detected['Repeat Coverage'].min() - 0.05), 2))
+        ## --min-score is NOT a post-hoc filter like the ones above - it's passed straight into
+        ## DECIPHER::DetectRepeats() as a hard search-time cutoff (see detect_repeats.R), the same
+        ## way DETECT_REPEATS_SEARCH_MAX_PERIOD's own docstring warns maxPeriod is. A repeat scoring
+        ## below --min-score is never found at all, not merely filtered out afterward - it won't
+        ## even appear in the raw candidates CSV, unlike a coverage/period/copies miss. Since the
+        ## consequence of guessing too high is silent and much harder to diagnose than guessing too
+        ## low, this uses a larger relative pad (25%, floor 2) than the other minimum thresholds
+        ## here rather than a small fixed offset.
+        score_pad = max(2.0, 0.25 * detected['Repeat Score'].min())
+        min_score_suggest = max(0, math.floor(detected['Repeat Score'].min() - score_pad))
+        ## --aromatic/--electrostatic are also minimum thresholds, checked against the same
+        ## detected repeat region (detect_repeats_extract) - pad downward the same way, with a
+        ## floor of 1 residue so a target that just barely clears the observed minimum doesn't get
+        ## a suggestion of 0 padding down to nothing.
+        aromatic_pad = max(1, round(0.2 * detected['Repeat Aromatic'].min()))
+        aromatic_suggest = max(0, math.floor(detected['Repeat Aromatic'].min() - aromatic_pad))
+        electrostatic_pad = max(1, round(0.2 * detected['Repeat Electrostatic'].min()))
+        electrostatic_suggest = max(0, math.floor(detected['Repeat Electrostatic'].min() - electrostatic_pad))
         lines.append("\tRepeat copies: observed {:.2f} - {:.2f}  ->  --min-copies {}".format(
             detected['Repeat Copies'].min(), detected['Repeat Copies'].max(), copy_suggest))
         lines.append("\tRepeat length: observed {:.0f} - {:.0f} aa  ->  --min-period {} --max-period {}".format(
             detected['Repeat Period (aa)'].min(), detected['Repeat Period (aa)'].max(), min_period_suggest, max_period_suggest))
+        lines.append("\tRepeat region coverage of full sequence: observed {:.2f} - {:.2f}  ->  --coverage {:.2f}".format(
+            detected['Repeat Coverage'].min(), detected['Repeat Coverage'].max(), coverage_suggest))
+        lines.append("\tRepeat significance score (DetectRepeats, this run's own loose min-score=4 probe): observed {:.1f} - {:.1f}  ->  --min-score {}".format(
+            detected['Repeat Score'].min(), detected['Repeat Score'].max(), min_score_suggest))
+        lines.append("\tAromatic residues (W/Y/F) in repeat region: observed {:.0f} - {:.0f}  ->  --aromatic {}".format(
+            detected['Repeat Aromatic'].min(), detected['Repeat Aromatic'].max(), aromatic_suggest))
+        lines.append("\tElectrostatic residues (D/E/R/K) in repeat region: observed {:.0f} - {:.0f}  ->  --electrostatic {}".format(
+            detected['Repeat Electrostatic'].min(), detected['Repeat Electrostatic'].max(), electrostatic_suggest))
+        example_flags += " --min-copies {} --min-period {} --max-period {} --coverage {:.2f} --min-score {} --aromatic {} --electrostatic {}".format(
+            copy_suggest, min_period_suggest, max_period_suggest, coverage_suggest, min_score_suggest, aromatic_suggest, electrostatic_suggest)
         lines.append("")
         lines.append("Example:")
-        lines.append("\tpython3 FLIPPer.py --non-interactive --engine detectrepeats --pi {:.1f} --min-copies {} --min-period {} --max-period {} --metapredict-filter-value {:.0f}".format(
-            pi_suggest, copy_suggest, min_period_suggest, max_period_suggest, disorder_suggest))
+        lines.append("\tpython3 FLIPPer.py --non-interactive --engine detectrepeats " + example_flags)
     else:
-        lines.append("\tNo repeats detected in any target - cannot suggest --min-copies/--min-period/--max-period; check the target sequences or loosen these manually.")
+        lines.append("\tNo repeats detected in any target - cannot suggest --min-copies/--min-period/--max-period/--coverage/--min-score/--aromatic/--electrostatic; check the target sequences or loosen these manually.")
     lines.append(lineenter)
 
     report_text = "\n".join(lines)
