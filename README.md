@@ -17,6 +17,42 @@ Both engines are filtered/scored through the same downstream pipeline (pI, compo
 
 ---
 
+## 📥 Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/james-r-barrett/FLIPPer.git
+   cd FLIPPer
+   ```
+
+2. **Install the Python dependencies** (requires Python ≥ 3.10):
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   Alternatively, install them individually:
+
+   ```bash
+   pip install biopython matplotlib beautifulsoup4 pandas metapredict cython protfasta
+   ```
+
+3. **Install the dependencies for whichever repeat-detection engine(s) you plan to use:**
+
+   - **`--engine xstream`** (default): requires a working **Java** installation. XSTREAM itself (`scripts/xstream.jar`) is bundled with FLIPPer, so there's nothing else to install.
+   - **`--engine detectrepeats`**: requires **R** with the Bioconductor package **DECIPHER** installed:
+
+     ```r
+     if (!requireNamespace("BiocManager", quietly = TRUE))
+         install.packages("BiocManager")
+     BiocManager::install("DECIPHER")
+     ```
+
+That's it - FLIPPer is installed. You can run it in place from the cloned directory, or point `--input-dir` at data anywhere else (see [Usage](#-usage) below) without needing to copy `FLIPPer.py` alongside it.
+
+---
+
 ## 🚀 Usage
 
 ```bash
@@ -161,27 +197,7 @@ For each analysed FASTA file, FLIPPer generates the following outputs:
 - protfasta
 - beautifulsoup4 (only needed for `--engine xstream`)
 
-### Installing R dependencies (only needed for `--engine detectrepeats`)
-
-```r
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install("DECIPHER")
-```
-
-### Installing Python dependencies
-
-Install all required Python packages in one step using the provided `requirements.txt`:
-
-```bash
-pip install -r requirements.txt
-```
-
-Alternatively, install them individually:
-
-```bash
-pip install biopython matplotlib beautifulsoup4 pandas metapredict cython protfasta
-```
+See [Installation](#-installation) above for how to install all of these from a fresh checkout.
 
 ---
 
