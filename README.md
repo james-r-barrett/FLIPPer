@@ -145,6 +145,21 @@ A few things worth knowing about how the XSTREAM engine derives suggestions:
 
 ---
 
+### 🔁 Re-filtering an existing `--engine detectrepeats` run
+
+Most of DetectRepeats' search-window filters (`--min-period`/`--max-period`/`--min-copies`/`--coverage`/`--aromatic`/`--electrostatic`/`--metapredict-filter-value`) are applied *after* detection, against a raw report of every candidate repeat DetectRepeats found. FLIPPer saves that raw report (`<file>_raw_repeats.csv`, plus a small sidecar) alongside its normal outputs, so if your first run's thresholds were too strict (or too loose) you can try different ones without re-running detection on the whole input:
+
+```bash
+python3 FLIPPer.py --engine detectrepeats --refilter path/to/file.fasta_FLIPPer_outputs \
+  --coverage 0.4 --min-copies 4
+```
+
+This re-applies the given thresholds to the saved raw report, re-runs the (usually much smaller) surviving candidate set through DetectRepeats once more to regenerate alignments, and rebuilds the candidate report - writing everything into `<OUTPUT_DIR>/refiltered/` without touching the original run's own outputs. It runs standalone, like `--characterize` - it doesn't touch `--input-dir` or run the main pipeline.
+
+**`--min-score` can't be changed this way.** Unlike the other filters, it's a search-time cutoff DetectRepeats itself applies - a repeat scoring below it is never written to the raw report in the first place, so there's nothing to re-filter. Changing it requires a full re-run.
+
+---
+
 ## 📂 Outputs
 
 For each analysed FASTA file, FLIPPer generates the following outputs:
@@ -164,7 +179,7 @@ For each analysed FASTA file, FLIPPer generates the following outputs:
 
 ### 3️⃣ Engine-specific repeat detection output
 - **`--engine xstream`**: XSTREAM's own tandem repeat detection results, viewable as a linked HTML file (`*_out_2.html`)
-- **`--engine detectrepeats`**: a CSV report, `<file>_detected_repeats.csv`, one row per detected repeat region (`ID`, `Begin`, `End`, `Period`, `Copies`, `Score`, `Coverage`)
+- **`--engine detectrepeats`**: a CSV report, `<file>_detected_repeats.csv`, one row per detected repeat region (`ID`, `Begin`, `End`, `Period`, `Copies`, `Score`, `Coverage`) - plus `<file>_raw_repeats.csv` (every candidate repeat found, before the period/copies/coverage/aromatic/electrostatic/disorder filters) and a small `.meta.json` sidecar, used by [`--refilter`](#-re-filtering-an-existing---engine-detectrepeats-run) to re-apply different thresholds without re-running detection
 
 ---
 

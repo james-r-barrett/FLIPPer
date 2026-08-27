@@ -309,7 +309,20 @@ def process_file(file, PATH, directory, metapredict_plot, metapredict_filter_val
     ## window, the aromatic/electrostatic composition filter, and the metapredict disorder
     ## filter - all three checked against that same repeat region
     detect_repeats_extract(candidates_csv, file, Aromatic, Electrostatic, minPeriod, maxPeriod, MinCopies, Coverage, metapredict_filter_value)
-    os.remove(candidates_csv)
+
+    ## preserve the raw, pre-filter hits (every candidate repeat DetectRepeats found, subject
+    ## only to MinScore - not yet filtered by period/copies/coverage/aromatic/electrostatic/
+    ## disorder) as a permanent output artifact, plus a sidecar recording the exact MinScore this
+    ## run searched with. Together these let refilter() below re-apply different period/copies/
+    ## coverage/aromatic/electrostatic/disorder thresholds against the same detected repeats
+    ## later, without re-running DetectRepeats on the whole input. MinScore itself can never be
+    ## changed this way, since it's a search-time cutoff DetectRepeats applies itself - repeats
+    ## below it are never written to this CSV to begin with.
+    import json
+    raw_repeats_csv = "{}_raw_repeats.csv".format(file)
+    os.replace(candidates_csv, raw_repeats_csv)
+    with open("{}_raw_repeats.meta.json".format(file), "w") as f:
+        json.dump({"min_score": MinScore}, f)
 
     ## write out the final candidate set (already filtered above) + optional disorder plots
     metapredict_htp('Temp_detectrepeats_filtered.fasta', directory, metapredict_plot)
@@ -345,6 +358,135 @@ def process_file(file, PATH, directory, metapredict_plot, metapredict_filter_val
         print("Candidate report written to " + candidate_report_html)
 
     return True
+
+## Re-apply period/copies/coverage/aromatic/electrostatic/disorder filters to an existing
+## DetectRepeats run's saved raw report (output_dir/<file>_raw_repeats.csv, written by
+## process_file above) without re-running DetectRepeats on the full input, and rebuild the
+## candidate report from the result. Writes into output_dir/refiltered/, leaving the original
+## run's own outputs untouched. MinScore can't be changed this way - it's a search-time cutoff
+## DetectRepeats itself applies, so repeats scoring below the original run's MinScore were never
+## written to the raw report to begin with; this reuses that original MinScore (recovered from the
+## sidecar written alongside the raw report) for the one DetectRepeats re-search this still does -
+## on just the new, usually much smaller candidate set, solely to regenerate per-hit alignments for
+## the report (those aren't preserved from the original run, since they're scratch input to its own
+## report). The report table itself doesn't need that re-search - it's built directly from the raw
+## report's own rows, which already have every repeat instance DetectRepeats found for these
+## sequences. Returns True on success, False if refiltering couldn't proceed.
+def refilter(output_dir, metapredict_plot, metapredict_filter_value, Aromatic, Electrostatic, MinCopies, minPeriod, maxPeriod, Coverage):
+    import os
+    import glob
+    import shutil
+    import json
+    import subprocess
+    from Bio import SeqIO
+    from FLIPPer_lib import lineenter, metapredict_htp, build_candidate_report
+
+    raw_matches = glob.glob(os.path.join(output_dir, "*_raw_repeats.csv"))
+    if not raw_matches:
+        print("No *_raw_repeats.csv found in " + output_dir + " - this folder either wasn't produced by "
+              "--engine detectrepeats, or predates --refilter support (re-run FLIPPer fully to enable it).")
+        return False
+    if len(raw_matches) > 1:
+        print("Multiple *_raw_repeats.csv found in " + output_dir + " - expected exactly one per output folder. Exiting.")
+        return False
+    raw_csv = os.path.abspath(raw_matches[0])
+    file = os.path.basename(raw_csv)[:-len("_raw_repeats.csv")]
+
+    input_fasta = os.path.join(output_dir, file)
+    if not os.path.isfile(input_fasta):
+        print("Original input FASTA '" + file + "' not found in " + output_dir + " - cannot look up sequence lengths/regions. Exiting.")
+        return False
+    input_fasta = os.path.abspath(input_fasta)
+
+    meta_path = os.path.join(output_dir, "{}_raw_repeats.meta.json".format(file))
+    MinScore = None
+    if os.path.isfile(meta_path):
+        with open(meta_path) as f:
+            MinScore = json.load(f).get("min_score")
+    if MinScore is None:
+        print("Could not recover the original --min-score from " + meta_path + " - the refiltered report will be built without alignment detail.")
+
+    print(lineenter)
+    print("Refiltering " + file + " from " + raw_csv)
+    print(lineenter)
+
+    refilter_dir = os.path.abspath(os.path.join(output_dir, "refiltered"))
+    if os.path.exists(refilter_dir):
+        shutil.rmtree(refilter_dir)
+    os.makedirs(refilter_dir)
+    plots_dir = os.path.join(refilter_dir, "metapredict_plots")
+    if metapredict_plot == 'y':
+        os.makedirs(plots_dir)
+
+    cwd = os.getcwd()
+    os.chdir(refilter_dir)
+    try:
+        ## select the qualifying candidate sequences (period/copies/coverage/aromatic/
+        ## electrostatic/disorder) - same selection logic the main pipeline's Pass 1 uses, just
+        ## against the already-saved raw report instead of a fresh DetectRepeats run. Writes
+        ## Temp_detectrepeats_filtered.fasta into the current directory (refilter_dir).
+        detect_repeats_extract(raw_csv, input_fasta, Aromatic, Electrostatic, minPeriod, maxPeriod, MinCopies, Coverage, metapredict_filter_value)
+
+        if not os.path.exists("Temp_detectrepeats_filtered.fasta") or os.path.getsize("Temp_detectrepeats_filtered.fasta") == 0:
+            print("No sequences passed the new filters - nothing to report.")
+            return False
+
+        metapredict_htp('Temp_detectrepeats_filtered.fasta', "metapredict_plots", metapredict_plot)
+
+        candidate_ids = set(_read_fasta_dual_keyed('candidate_sequences.fasta').keys())
+        report_df = load_detect_repeats_report(raw_csv, input_fasta, minPeriod, maxPeriod, MinCopies, Coverage)
+        report_df = report_df[report_df['ID'].isin(candidate_ids)]
+        report_df = report_df.rename(columns={'CoverageFraction': 'Coverage'}).drop(columns=['SeqLen'])
+        final_report_csv = "{}_detected_repeats.csv".format(file)
+        report_df.to_csv(final_report_csv, index=None, sep=',')
+
+        sequences = _read_fasta_dual_keyed('candidate_sequences.fasta')
+
+        ## best-effort re-search, with the original MinScore, purely to populate alignments -
+        ## see the docstring above for why this (and only this) still needs DetectRepeats to run
+        alignments_dir = "DetectRepeats_alignments"
+        align_pass_csv = "_refilter_alignment_pass.csv"
+        have_alignments = False
+        if MinScore is not None:
+            have_alignments = run_detect_repeats(DETECT_REPEATS_R, 'candidate_sequences.fasta', MinScore, DETECT_REPEATS_SEARCH_MAX_PERIOD, 1000,
+                                                  align_pass_csv, alignments_dir=alignments_dir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            if not have_alignments:
+                print("Alignment re-search failed; report will be built without alignment detail.")
+
+        def alignment_provider(seq_id, repeat_index):
+            if not have_alignments:
+                return None
+            align_path = os.path.join(alignments_dir, "{}__{}.fasta".format(_detect_repeats_safe_id(seq_id), repeat_index))
+            if not os.path.exists(align_path):
+                return None
+            return [(r.id, str(r.seq)) for r in SeqIO.parse(align_path, "fasta")]
+
+        candidate_report_html = "{}_candidate_report.html".format(file)
+        build_candidate_report(report_df, sequences, alignment_provider, candidate_report_html,
+                                score_meta={"label": "score", "explanation": DETECT_REPEATS_SCORE_EXPLANATION, "format": "{:.1f}"})
+
+        with open("refilter_variables.txt", "w") as f:
+            f.write("Refiltered from: {}\n".format(raw_csv))
+            f.write("Original --min-score (reused for alignment re-search): {}\n".format(MinScore))
+            f.write("--min-copies {}\n--min-period {}\n--max-period {}\n--coverage {}\n--aromatic {}\n--electrostatic {}\n--metapredict-filter-value {}\n".format(
+                MinCopies, minPeriod, maxPeriod, Coverage, Aromatic, Electrostatic, metapredict_filter_value))
+
+        ## tidy up scratch files/dirs - only the candidate FASTA/CSV, report CSV, report HTML,
+        ## variables file and (if plotting was on) metapredict_plots/ are meant to remain
+        if os.path.exists(alignments_dir):
+            shutil.rmtree(alignments_dir)
+        if os.path.exists(align_pass_csv):
+            os.remove(align_pass_csv)
+        if os.path.exists("Temp_detectrepeats_filtered.fasta"):
+            os.remove("Temp_detectrepeats_filtered.fasta")
+        for x in glob.glob("*.chunk*.fasta") + glob.glob("*.chunk*.csv"):
+            os.remove(x)
+
+        print("Refiltered candidate report written to " + os.path.join(refilter_dir, candidate_report_html))
+        print(str(len(candidate_ids)) + " candidates, " + str(len(report_df.index)) + " qualifying repeat region(s).")
+        return True
+    finally:
+        os.chdir(cwd)
 
 ## module to characterize a FASTA file of known/reference target sequences (e.g. known pyrenoid
 ## linkers) and suggest FLIPPer search parameters from their observed pI, repeat structure and
@@ -583,8 +725,9 @@ def output_variables(file, pI, THRatio, Serine, Alanine, MinScore, MinCopies, mi
 def finalize_extra(destination_folder, path):
     import glob
     from FLIPPer_lib import move_files
-    for z in glob.glob("*_detected_repeats.csv"):
-        move_files(z, destination_folder, path)
+    for pattern in ("*_detected_repeats.csv", "*_raw_repeats.csv", "*_raw_repeats.meta.json"):
+        for z in glob.glob(pattern):
+            move_files(z, destination_folder, path)
 
 ## engine-specific temp files cleanup_temp_files() (scripts/FLIPPer_lib.py) removes, beyond the
 ## common one it already handles itself

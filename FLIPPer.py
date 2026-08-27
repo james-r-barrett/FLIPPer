@@ -16,6 +16,7 @@ def build_arg_parser():
     parser.add_argument("--engine", choices=["xstream", "detectrepeats"], default=None, help="Repeat-detection engine to use (default: xstream when omitted; prompted for under --interactive)")
     parser.add_argument("--input-dir", default=".", help="Directory containing the FASTA files to process (default: current directory)")
     parser.add_argument("--characterize", metavar="FASTA", help="Characterize a FASTA file of known/reference target sequences (e.g. known pyrenoid linkers) - reports their pI, repeat structure and disorder, and suggests FLIPPer search parameters from them. Runs standalone and exits without processing --input-dir.")
+    parser.add_argument("--refilter", metavar="OUTPUT_DIR", help="[--engine detectrepeats] Re-apply --min-period/--max-period/--min-copies/--coverage/--aromatic/--electrostatic/--metapredict-filter-value to an existing <file>_FLIPPer_outputs folder from a previous detectrepeats run, without re-running detection on the full input, and rebuild the candidate report. Writes into OUTPUT_DIR/refiltered/. --min-score cannot be changed this way (it's a detection-time cutoff, not a post-hoc filter) - re-run FLIPPer fully to change it. Runs standalone and exits without processing --input-dir.")
     parser.add_argument("--interactive", action="store_true", help="Prompt for each parameter instead of using the flags below/their documented defaults - press Enter at any prompt to keep the default shown in brackets")
     parser.add_argument("--non-interactive", action="store_true", help=argparse.SUPPRESS)  ## deprecated no-op: running with no flags now behaves this way by default
     parser.add_argument("--pi", type=float, default=8.0, help="pI threshold (default: 8)")
@@ -27,7 +28,7 @@ def build_arg_parser():
     parser.add_argument("--word", default="0.3625", help="[--engine xstream] XSTREAM minimum word match (default: 0.3625)")
     parser.add_argument("--consensus", default="0.4", help="[--engine xstream] XSTREAM consensus match (default: 0.4)")
     parser.add_argument("--gaps", default="55", help="[--engine xstream] XSTREAM maximum gaps in repeats (default: 55)")
-    parser.add_argument("--min-score", default="8", help="[--engine detectrepeats] DetectRepeats minimum repeat significance score (default: 8)")
+    parser.add_argument("--min-score", default="8", help="[--engine detectrepeats] DetectRepeats minimum repeat significance score (default: 8) - a detection-time cutoff, not changeable via --refilter")
     parser.add_argument("--min-copies", default="3", help="[--engine detectrepeats] Minimum tandem repeat copy number (default: 3)")
     parser.add_argument("--min-period", default="20", help="Minimum repeat period/unit length in aa (default: 20)")
     parser.add_argument("--max-period", default="120", help="Maximum repeat period/unit length in aa (default: 120)")
@@ -151,6 +152,24 @@ if args.characterize:
     os.chdir(os.path.dirname(target_path))
     engine.characterize(os.path.basename(target_path))
     sys.exit(0)
+
+## --refilter is a standalone action, like --characterize: re-apply post-detection filters to an
+## existing DetectRepeats output folder and exit, without touching --input-dir or running the main
+## proteome-scanning pipeline below. Only detectrepeats saves the raw, pre-filter report this reads
+## (see engine_detectrepeats.py's process_file/refilter) - xstream has no equivalent yet.
+if args.refilter:
+    if engine_name != "detectrepeats":
+        print("--refilter is only supported with --engine detectrepeats (pass --engine detectrepeats). Exiting.")
+        sys.exit(1)
+    refilter_dir = args.refilter if os.path.isabs(args.refilter) else os.path.join(INVOCATION_DIR, args.refilter)
+    refilter_dir = os.path.abspath(refilter_dir)
+    if not os.path.isdir(refilter_dir):
+        print(refilter_dir + " not found. Exiting.")
+        sys.exit(1)
+    metapredict_plot_flag = 'y' if args.metapredict_plot else 'n'
+    ok = engine.refilter(refilter_dir, metapredict_plot_flag, args.metapredict_filter_value, args.aromatic, args.electrostatic,
+                          args.min_copies, args.min_period, args.max_period, args.coverage)
+    sys.exit(0 if ok else 1)
 
 if args.interactive:
     ## Interactive wizard: one line per parameter, showing the flag/default value as the bracketed
